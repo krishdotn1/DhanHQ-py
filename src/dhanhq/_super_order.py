@@ -115,7 +115,7 @@ class SuperOrder:
         quantity: int,
         order_type: str,
         product_type: str,
-        price: Optional[float] = None,
+        price: float,
         targetPrice: Optional[float] = None,
         stopLossPrice: Optional[float] = None,
         trailingJump: Optional[float] = None,
@@ -131,7 +131,7 @@ class SuperOrder:
             quantity (int): Order quantity (> 0).
             order_type (str): LIMIT or MARKET.
             product_type (str): CNC, INTRADAY, MARGIN, MTF.
-            price (float, optional): Entry price. Set to None for market orders. (default: None)
+            price (float): Entry price. Set to LTP for market orders. required to check validation  
             targetPrice (float, optional): Target price. (default: None)
             stopLossPrice (float, optional): Stop loss price. (default: None)
             trailingJump (float, optional): Trailing SL value. (default: None)
@@ -144,7 +144,7 @@ class SuperOrder:
             ValueError: If mandatory inputs are missing or logically invalid.
         """
         # Basic validations
-        if not all([security_id, exchange_segment, transaction_type, quantity, order_type, product_type]):
+        if not all([security_id, exchange_segment, transaction_type, quantity, order_type, product_type, price]):
             raise ValueError("Missing required parameters for placing a super order.")
         
         security_id = str(security_id)
@@ -160,18 +160,6 @@ class SuperOrder:
         tag = str(tag) if tag is not None else None
 
         # Leg validation
-        if order_type == "MARKET":
-            if price is not None and price != 0:
-                raise ValueError("For MARKET orders, price must be None or 0.")
-        elif order_type == "LIMIT":
-            if price is None or price <= 0:
-                raise ValueError("For LIMIT orders, price must be provided and > 0.")
-        else:
-            pass
-
-        if (targetPrice is None or targetPrice <= 0) and (stopLossPrice is None or stopLossPrice <= 0):
-            raise ValueError("At least one of targetPrice or stopLossPrice must be provided and > 0.")
-        
         if trailingJump:
             if trailingJump < 0:
                 raise ValueError("trailingJump must be >= 0.")
@@ -180,20 +168,17 @@ class SuperOrder:
 
         # Logical leg validation
         if transaction_type == "BUY":
-            if order_type != "MARKET":
-                if targetPrice and not (targetPrice > price):
-                    raise ValueError("For BUY: targetPrice must be > price.")
-                if stopLossPrice and not (stopLossPrice < price):
-                    raise ValueError("For BUY: stopLossPrice must be < price.")
+            if targetPrice > 0 and not (targetPrice > price):
+                raise ValueError("For BUY: targetPrice must be > price.")
+            if stopLossPrice > 0 and not (stopLossPrice < price):
+                raise ValueError("For BUY: stopLossPrice must be < price.")
         elif transaction_type == "SELL":
-            if order_type != "MARKET":
-                if targetPrice and not (targetPrice < price):
-                    raise ValueError("For SELL: targetPrice must be < price.")
-                if stopLossPrice and not (stopLossPrice > price):
-                    raise ValueError("For SELL: stopLossPrice must be > price.")
+            if targetPrice > 0 and not (targetPrice < price):
+                raise ValueError("For SELL: targetPrice must be < price.")
+            if stopLossPrice > 0 and not (stopLossPrice > price):
+                raise ValueError("For SELL: stopLossPrice must be > price.")
         else:
             raise ValueError("transaction_type must be either BUY or SELL.")
-
         payload = {
             "transactionType": transaction_type,
             "exchangeSegment": exchange_segment,
@@ -201,7 +186,7 @@ class SuperOrder:
             "orderType": order_type,
             "securityId": security_id,
             "quantity": quantity,
-            "price": price,
+            "price": price if order_type == "LIMIT" else 0, 
             "targetPrice": targetPrice,
             "stopLossPrice": stopLossPrice,
             "trailingJump": trailingJump
